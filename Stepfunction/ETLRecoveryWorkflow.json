@@ -1,0 +1,79 @@
+{
+  "Comment": "AI Driven Serverless ETL Recovery Workflow",
+  "StartAt": "ValidateCSV",
+  "States": {
+    "ValidateCSV": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:ap-south-1:258484763558:function:ValidateCSV",
+        "Payload.$": "$"
+      },
+      "OutputPath": "$.Payload",
+      "Next": "ValidationCheck"
+    },
+    "ValidationCheck": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.status",
+          "StringEquals": "SUCCESS",
+          "Next": "RunGlueJob"
+        }
+      ],
+      "Default": "RecoveryLambda"
+    },
+    "RunGlueJob": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "ETLTransformJob",
+        "Arguments": {
+          "--input_file.$": "$.key"
+        }
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "RecoveryLambda"
+        }
+      ],
+      "Next": "SuccessEmail"
+    },
+    "RecoveryLambda": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:ap-south-1:258484763558:function:RecoveryLambda",
+        "Payload.$": "$"
+      },
+      "OutputPath": "$.Payload",
+      "End": true
+    },
+    "SuccessEmail": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:ap-south-1:258484763558:function:SuccessLambda",
+        "Payload.$": "$"
+      },
+      "OutputPath": "$.Payload",
+      "Next": "Success"
+    },
+    "Success": {
+      "Type": "Succeed"
+    }
+  }
+}
